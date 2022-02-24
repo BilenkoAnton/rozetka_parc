@@ -14,14 +14,17 @@ with open('not_found.csv', 'w', encoding='utf-8') as file:
     writer.writerow(['Название', 'Артикул'])
 
 search_terms = get_search_terms()
+i = 0
 
-for search_term, vendor_code in search_terms:
+for search_term, vendor_code in search_terms[1417:]:
+    i += 1
+    print(f'{i}/13871 was started')
     product = {'search_terms_searching': not search_term.isdigit() and search_term,
                'vendor_code_searching': not vendor_code.isdigit() and vendor_code,
                'search_term_url_rozetka': create_url(search_term, rozetka=True),
                'vendor_code_url_rozetka': create_url(vendor_code, rozetka=True),
                'search_term_url': create_url(search_term),
-               'vendor_code_url': create_url(vendor_code),
+               'vendor_code_url': create_url(vendor_code.split['='][-1]),
                'without_brackets_url_rozetka': create_url(delete_brackets(search_term), rozetka=True),
                'without_brackets_url': create_url(delete_brackets(search_term))}
     search_turn = (product.get('search_term_url_rozetka') if product.get('search_terms_searching') else None,
