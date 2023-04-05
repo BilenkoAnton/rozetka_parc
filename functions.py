@@ -1,11 +1,10 @@
 import csv
-from threading import Thread
-import multiprocessing
+import openpyxl
 
 from bs4 import BeautifulSoup
 from requests_html import HTMLSession
 
-from constants import main_url, titles, reserved_characteristics, NUMBER_OF_THREADING
+from constants import main_url, titles, reserved_characteristics, NUMBER_OF_THREADING, titles_without_article
 
 session = HTMLSession()
 
@@ -27,7 +26,8 @@ def create_request(url, render=False):
     if render:
         while True:
             try:
-                resp.html.render(timeout=100, sleep=3)
+                for i in range(5):
+                    resp.html.render(timeout=100, sleep=5)
                 break
             except:
                 continue
@@ -40,15 +40,17 @@ def get_source(soup):
 
 
 def get_product_information(soup, url):
+    print(f'start work with: {url}')
     if soup.find('h1', class_='product__title'):
         name = soup.find('h1', class_='product__title').text.strip()
     else:
         name = None
-    price_and_currency = soup.find('div', class_='product-prices__inner')
+    price_and_currency = soup.find('p', class_='product-price__big')
     if price_and_currency:
-        price, currency = price_and_currency.text[:-1].replace('\xa0', '').strip(), price_and_currency.text[-1]
-        if not price.isdigit():
-            price = price.split(currency)[-1]
+        price, currency = price_and_currency.text[:-1].replace('\xa0', ''), price_and_currency.find('span').text
+        #text[:-1].replace('\xa0', '').strip()
+        #if not price.isdigit():
+         #   price = price.split(currency)[-1]
         availability = '+' if soup.find('span', class_='buy-button__label') else '-'
     else:
         price, currency, availability = None, None, False
@@ -70,13 +72,13 @@ def get_product_information(soup, url):
         characteristics = get_characteristics(soup)
     else:
         characteristics = [None]
-    return [name, price, currency, images, description, availability, brand[0], brand[1]] + characteristics
+    return [name, price, currency, images, description, availability, brand[0], None, brand[1]] + characteristics
 
 
 def concatenate_list(list_):
     string_ = ''
     for el in list_:
-        string_ += f'{el}, '
+        string_ += f'{el}; '
     return string_.strip()[:-1]
 
 
@@ -88,9 +90,9 @@ def product_filter(product):
 
 
 def get_characteristics(soup):
+    names_and_parameters_list = []
     characteristic_url = soup.find('a', class_='product-about__all-link').get('href')
     soup = create_request(characteristic_url)
-    names_and_parameters_list = [None]*len(reserved_characteristics)*2
     names_and_parameters = soup.find_all('div', class_='characteristics-full__item')
     for el in names_and_parameters:
         if el.find('span'):
@@ -99,16 +101,9 @@ def get_characteristics(soup):
         if not parameters:
             parameters = el.find_all('a')
         parameters = concatenate_list([parameter.text for parameter in parameters])
-        if name in reserved_characteristics:
-            for index in range(len(reserved_characteristics)):
-                if reserved_characteristics[index] == name:
-                    index_for_name = index * 2
-                    names_and_parameters_list[index_for_name] = name
-                    index_for_parameter = index_for_name + 1
-                    names_and_parameters_list[index_for_parameter] = parameters
-        else:
-            names_and_parameters_list.append(name)
-            names_and_parameters_list.append(parameters)
+        names_and_parameters_list.append(name)
+        names_and_parameters_list.append(None)
+        names_and_parameters_list.append(parameters)
     return names_and_parameters_list
 
 
@@ -117,7 +112,9 @@ def check_type_of_page(soup):
         return 'page is empty'
     elif soup.find('div', class_='rz-search-relqueries-title ng-star-inserted'):
         return 'not all words in result'
-    elif soup.find('div', class_='goods-tile__inner'):
+    #elif soup.find('div', class_='goods-tile__inner'):
+     #   return 'page with sources'
+    elif soup.find('h1', class_='catalog-heading ng-star-inserted'):
         return 'page with sources'
     elif soup.find('h1', class_='product__title'):
         return 'product page'
@@ -131,20 +128,20 @@ def get_search_terms(file_name='positions.csv'):
         return reader
 
 
-def write_titles(file_name):
-    with open(file_name, 'w', encoding='utf-8', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(titles)
+def write_titles(file_name, article=True):
+    with open(file_name, 'w', encoding='utf-8-sig', newline='') as file:
+        writer = csv.writer(file, delimiter=',')
+        writer.writerow(titles) if article else writer.writerow(titles_without_article)
 
 
 def update_information(file_name, product):
-    with open(file_name, 'a', encoding='utf-8', newline='') as file:
+    with open(file_name, 'a', encoding='utf-8-sig', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(product_filter(product))
         if file_name == 'not_found.csv':
             print(f'{product[0]} was add to {file_name}')
         else:
-            print(f'{product[1]} was add to {file_name}')
+            print(f'{product[0]} was add to {file_name}')
 
 
 def get_and_write_product(file_name, soup, url, vendor_code):
@@ -168,7 +165,7 @@ def main_func(search_list):
     for search_term, vendor_code in search_list:
         print(f'{search_term} was start finding')
         product = {'search_terms_searching': not search_term.isdigit() and search_term,
-                   'vendor_code_searching': not vendor_code.isdigit() and vendor_code,
+                   'vendor_code_searching': not vendor_code.isdigit() and vendor_code.split('=')[-1],
                    'search_term_url_rozetka': create_url(search_term, rozetka=True),
                    'vendor_code_url_rozetka': create_url(vendor_code, rozetka=True),
                    'search_term_url': create_url(search_term),
@@ -221,8 +218,21 @@ def create_thread_list(search_list):
     for thread_number in range(1, NUMBER_OF_THREADING+1):
         last_index = len(search_list)//NUMBER_OF_THREADING * thread_number
         first_index = last_index - len(search_list)//NUMBER_OF_THREADING
-        print(first_index, last_index)
         thread_list.append(search_list[first_index:last_index])
     if len(search_list) != last_index:
         thread_list.append(search_list[last_index:])
     return thread_list
+
+
+def get_sources_upd(soup):
+    sources = [el.get('href') for el in soup.find_all('a', class_='goods-tile__picture ng-star-inserted')]
+    return sources
+
+
+def write_to_excel(data, filename):
+    data = [titles_without_article]+data
+    wb = openpyxl.Workbook()
+    sheet = wb.active
+    for row in data:
+        sheet.append(row)
+    wb.save(filename)

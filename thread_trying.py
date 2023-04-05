@@ -16,10 +16,10 @@ with open('not_found.csv', 'w', encoding='utf-8') as file:
 
 
 search_terms = get_search_terms()
-# thread_list = create_thread_list(search_terms)
-# for thread in thread_list:
-#     thread.start()
-#     print(f'{thread} was started')
+thread_list = create_thread_list(search_terms)
+#for thread in thread_list:
+#    thread.start()
+#    print(f'{thread} was started')
 
 if __name__ == '__main__':
     thread_list = create_thread_list(search_terms)
